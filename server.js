@@ -11,8 +11,7 @@ const pool = mariadb.createPool({
     port: 3306,
     user: "user1", 
     password: "password1",
-    database: "midterm",
-    connectionLimit: 5    
+    database: "midterm"
 });
 
 async function checkDbConnection() {
@@ -59,10 +58,11 @@ app.get("/api/messages", function(req,res) {
 
 app.post("/api/msgs", async (req, res) => {
     let body = req.body;
+    let conn
     try {
         const sql = "INSERT INTO Msg (uuid, author, message, likes) VALUES (?,?,?,?)"
         const values = [body.uuid, body.author, body.message, body.likes]
-        const conn = await pool.getConnection();
+        conn = await pool.getConnection();
         const result = await conn.query(sql,values)
         console.log(result)
         res.status(200).json({
@@ -71,6 +71,9 @@ app.post("/api/msgs", async (req, res) => {
         })
     } catch (err) {
         throw err;
+
+    } finally {
+        if (conn) conn.release();
     }
 });
 
