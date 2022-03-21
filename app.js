@@ -53,7 +53,10 @@ app.get("/api/messages", async (req,res) => {
     let minCount = await rc.zrevrange("data", -1, -1, "WITHSCORES")
     minCount = parseInt(minCount[1])
 
+    let validId = await rc.zrangebyscore("count", 0, rCount)
+
     let cacheResult
+    let cresult
     let result
     console.log(rCount)
     console.log(minCount)
@@ -61,24 +64,24 @@ app.get("/api/messages", async (req,res) => {
     //case all update need is in cache
     if (minCount <= rCount + 1) {
         cacheResult = await rc.zrangebyscore("data", rCount + 1, count)
-        result = []
-        cacheResult.forEach((string) => result.push(JSON.parse(string)))
+        cresult = []
+        cacheResult.forEach((string) => cresult.push(JSON.parse(string)))
         cacheResult = undefined 
         res.status(201).json({
             success: true,
             data: result
         })
     } else { //case update from both cache and DB
-        cacheResult = await rc.zrangebyscore("data", rCount + 1, count)
+        cacheResult = await rc.zrangebyscore("data", minCount, count)
         console.log(cacheResult)
-        result = []
+        cresult = []
         //cacheResult.forEach((string) => result.push(JSON.parse(string)))
-        cacheResult.forEach((string) => result.push(string))
+        cacheResult.forEach((string) => cresult.push(string))
         cacheResult = undefined
 
         let conn
             try {
-                let sql = "SELECT uuid author message likes FROM Data WHERE count >= " + (rCount+1) + " AND " + "count < " + count + " AND isdelete = 0"
+                let sql = "SELECT uuid, author, message, likes FROM Data WHERE count >= " + (rCount+1) + " AND " + "count < " + (minCount) + " AND isdelete = 0"
                 console.log(sql)
                 conn = await pool.getConnection();
 
@@ -88,7 +91,9 @@ app.get("/api/messages", async (req,res) => {
                 res.status(201).json({
                     success: true,
                     message: "successfully get all rows",
-                    //data: result
+                    valid: validId,
+                    data: result,
+                    cdata: cresult
                 })
             } catch (err) {
                 throw err;
@@ -141,6 +146,7 @@ app.put("/api/messages/:uuid", async (req,res) => {
 
     //find score of uuid
     let oscore = await rc.zscore("count", req.params.uuid)
+
     if (oscore) {
         //update count and data table in cache
         await rc.zadd("count", count + 1, req.params.uuid)

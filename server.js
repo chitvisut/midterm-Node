@@ -365,6 +365,7 @@ app.post("/api/msg/:uuid", async (req,res) => {
     // console.log("start query")
     //const value = await rc.zcount("index", "-inf", "+inf")
     //const value = await rc.zrevrange("count", -1, -1, "WITHSCORES")
+    const validid = await rc.zrangebyscore("count", 0, 3)
     const oscore = await rc.zscore("data", "B")
     const xcount = await rc.zrange("count", 0, -1, "WITHSCORES")
     const xdata = await rc.zrange("data", 0, -1, "WITHSCORES")
@@ -378,6 +379,7 @@ app.post("/api/msg/:uuid", async (req,res) => {
         console.log("not found")
     }
 
+    console.log(validid)
     console.log(xcount)
     console.log(xdata)
 
