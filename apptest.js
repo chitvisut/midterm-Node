@@ -81,7 +81,7 @@ app.get("/api/messages", async (req,res) => {
 
         let conn
             try {
-                let sql = "SELECT uuid, author, message, likes FROM data WHERE count >= " + (rCount+1) + " AND " + "count < " + (minCount) + " AND isdelete = 0 LIMIT 10"
+                let sql = "SELECT uuid, author, message, likes FROM test WHERE count >= " + (rCount+1) + " AND " + "count < " + (minCount) + " AND isdelete = 0 LIMIT 10"
                 console.log(sql)
                 conn = await pool.getConnection();
 
@@ -109,7 +109,7 @@ app.get("/api/messages", async (req,res) => {
 app.get("/api/messages/:uuid", async (req,res) => {
     let conn
     try {
-        const sql = "SELECT * FROM data WHERE uuid = ? AND isdelete = 0"
+        const sql = "SELECT * FROM test WHERE uuid = ? AND isdelete = 0"
         const values = [req.params.uuid]
         conn = await pool.getConnection();
 
@@ -174,7 +174,7 @@ app.put("/api/messages/:uuid", async (req,res) => {
         //         message: "uuid not found in DB",
         //     })
         // } else {
-            sql = "UPDATE data SET author = ?, message = ?, likes = ? , count = ? WHERE uuid = ?"
+            sql = "UPDATE test SET author = ?, message = ?, likes = ? , count = ? WHERE uuid = ?"
             values = [req.body.author, req.body.message, req.body.likes, count + 1, req.params.uuid]
             let result = await conn.query(sql,values)
             res.status(201).json({
@@ -195,35 +195,42 @@ app.put("/api/messages/:uuid", async (req,res) => {
 //delete version
 app.delete("/api/messages/:uuid", async (req,res) => {
 
+    //find score of uuid
+    let oscore = await rc.zscore("count", req.params.uuid)
+    let cache = await rc.zrangebyscore("data", oscore, oscore)
+
+    let count = await rc.zrange("count", -1, -1, "WITHSCORES")
+    count = parseInt(count[1])
+    console.log(count)
+
+    //case have uuid in count and data still in data
+    if (oscore && cache) {
+        //update count and data table in cache
+        await rc.zadd("count", count + 1, req.params.uuid)
+        await rc.zremrangebyscore("data", oscore, oscore)
+
+    } else {
+        res.status(404).json({
+            success: false,
+            message: "uuid not found in count cache",
+    })}
+
     let conn
     try {
-        let sql = "SELECT uuid FROM data WHERE uuid = ? and isdelete = 0"
-        let values = [req.params.uuid]
+        // let sql = "SELECT uuid FROM data WHERE uuid = ? and isdelete != 1"
+        // let values = [req.params.uuid]
         conn = await pool.getConnection();
 
-        let [rows, meta] = await conn.query(sql,values)
+        // let [rows, meta] = await conn.query(sql,values)
 
-        if (!rows) {
-            res.status(404).json({
-                success: false,
-                message: "uuid not found in DB",
-            })
-        } else {
-            //Update count Cache
-            let count = await rc.zrange("count", -1, -1, "WITHSCORES")
-            count = parseInt(count[1])
-            console.log(count)
-            await rc.zadd("count", count + 1, req.params.uuid)
-            //Update data Cache
-            //find score of uuid
-            let oscore = await rc.zscore("count", req.params.uuid)
-            let cache = await rc.zrangebyscore("data", oscore, oscore)
-            if (cache) {
-                await rc.zremrangebyscore("data", oscore, oscore)
-            }
-
+        // if (!rows) {
+        //     res.status(404).json({
+        //         success: false,
+        //         message: "uuid not found in DB",
+        //     })
+        // } else {
             //uodate isdelete instead of delete
-            sql = "UPDATE data SET isdelete = 1 WHERE uuid = ?"
+            sql = "UPDATE test SET isdelete = 1 WHERE uuid = ?"
             values = [req.params.uuid]
             let result = await conn.query(sql,values)
             res.status(201).json({
@@ -231,7 +238,7 @@ app.delete("/api/messages/:uuid", async (req,res) => {
                 message: "successfully delete",
                 //data: result
             })
-        }
+        // }
 
     } catch (err) {
         throw err;
@@ -270,43 +277,41 @@ app.post("/api/messages", async (req, res) => {
             await rc.zadd("count", count + 1, body.uuid)
             await rc.zadd("data", count + 1, JSON.stringify(body))
         }
-
-        try {
-            // let sql = "SELECT uuid FROM data WHERE uuid = ?"
-            // let values = [body.uuid]
-            // conn = await pool.getConnection();
-            // let [rows, meta] = await conn.query(sql,values)
-    
-            // if (rows) {
-            //     res.status(409).json({
-            //         success: false,
-            //         message: "uuid already exist in DB",
-            //     })
-            // } else {
-                sql = "INSERT INTO data (uuid, author, message, likes, count) VALUES (?,?,?,?,?)"
-                values = [body.uuid, body.author, body.message, body.likes, count + 1]
-                conn = await pool.getConnection();
-                const result = await conn.query(sql,values)
-                //console.log(result)
-                res.status(201).json({
-                    success: true,
-                    message: "successfully insert row"
-                })
-            // }
-    
-        } catch (err) {
-            throw err;
-    
-        } finally {
-            if (conn) conn.release();
-        }
-
     } else {
         res.status(409).json({
             
             message: "uuid already exist in cache",
     })}
 
+    try {
+        // let sql = "SELECT uuid FROM data WHERE uuid = ?"
+        // let values = [body.uuid]
+        // conn = await pool.getConnection();
+        // let [rows, meta] = await conn.query(sql,values)
+
+        // if (rows) {
+        //     res.status(409).json({
+        //         success: false,
+        //         message: "uuid already exist in DB",
+        //     })
+        // } else {
+            sql = "INSERT INTO test (uuid, author, message, likes, count) VALUES (?,?,?,?,?)"
+            values = [body.uuid, body.author, body.message, body.likes, count + 1]
+            conn = await pool.getConnection();
+            const result = await conn.query(sql,values)
+            //console.log(result)
+            res.status(201).json({
+                success: true,
+                message: "successfully insert row"
+            })
+        // }
+
+    } catch (err) {
+        throw err;
+
+    } finally {
+        if (conn) conn.release();
+    }
 });
 
 app.listen(3000, function() {
