@@ -177,7 +177,7 @@ app.put("/api/messages/:uuid", async (req,res) => {
         sql = "UPDATE data SET author = ?, message = ?, likes = ? , count = ? WHERE uuid = ?"
         values = [req.body.author, req.body.message, req.body.likes, count + 1, req.params.uuid]
         let result = await conn.query(sql,values)
-        res.status(201).json({
+        res.status(204).json({
             success: true,
             message: "successfully update",
 
@@ -226,7 +226,7 @@ app.delete("/api/messages/:uuid", async (req,res) => {
             sql = "UPDATE data SET isdelete = 1 WHERE uuid = ?"
             values = [req.params.uuid]
             let result = await conn.query(sql,values)
-            res.status(201).json({
+            res.status(204).json({
                 success: true,
                 message: "successfully delete",
                 //data: result
