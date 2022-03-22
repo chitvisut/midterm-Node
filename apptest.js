@@ -81,7 +81,7 @@ app.get("/api/messages", async (req,res) => {
 
         let conn
             try {
-                let sql = "SELECT uuid, author, message, likes FROM test WHERE count >= " + (rCount+1) + " AND " + "count < " + (minCount) + " AND isdelete = 0 LIMIT 10"
+                let sql = "SELECT uuid, author, message, likes, count FROM test WHERE count >= " + (rCount+1) + " AND " + "count < " + (minCount) + " AND isdelete = 0 LIMIT 10"
                 console.log(sql)
                 conn = await pool.getConnection();
 

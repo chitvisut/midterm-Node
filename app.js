@@ -8,7 +8,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}))
 
 const rc = new Redis()
-const maxCache = 200000
+const maxCache = 4
 
 const pool = mariadb.createPool({
     host: "34.217.133.174", 
@@ -46,63 +46,69 @@ app.get("/api/messages", async (req,res) => {
     if (count === rCount) {
         res.status(201).json({
                 success: true,
-                message: "client is up to date"
+                message: "client is up to date",
+                count: count
             })
+    } else {
+
+        let minCount = await rc.zrevrange("data", -1, -1, "WITHSCORES")
+        minCount = parseInt(minCount[1])
+
+        let validId = await rc.zrangebyscore("count", 0, rCount)
+
+        let cacheResult
+        let cresult
+        let result
+        console.log(rCount)
+        console.log(minCount)
+
+        //case all update need is in cache
+        if (minCount <= rCount + 1) {
+            cacheResult = await rc.zrangebyscore("data", rCount + 1, count)
+            cresult = []
+            cacheResult.forEach((string) => cresult.push(JSON.parse(string)))
+            cacheResult = undefined 
+            res.status(201).json({
+                success: true,
+                message: "successfully get all rows",
+                count: count,
+                valid: validId,
+                data: cresult
+            })
+        } else { //case update from both cache and DB
+            cacheResult = await rc.zrangebyscore("data", minCount, count)
+            console.log(cacheResult)
+            cresult = []
+            cacheResult.forEach((string) => cresult.push(JSON.parse(string)))
+            cacheResult = undefined
+
+
+            let conn
+                try {
+                    let sql = "SELECT uuid, author, message, likes FROM data WHERE count >= " + (rCount+1) + " AND " + "count < " + (minCount) + " AND isdelete = 0"
+                    console.log(sql)
+                    conn = await pool.getConnection();
+
+                    result = await conn.query(sql)
+                    cresult.forEach((item)=>result.push(item))
+                    cresult = undefined
+
+                    console.log("prepare to send res")
+                    res.status(201).json({
+                        success: true,
+                        message: "successfully get all rows",
+                        count: count,
+                        valid: validId,
+                        data: result,
+                    })
+
+                } catch (err) {
+                    throw err;
+
+                } finally {
+                    if (conn) conn.release();
+                }
         }
-
-    let minCount = await rc.zrevrange("data", -1, -1, "WITHSCORES")
-    minCount = parseInt(minCount[1])
-
-    let validId = await rc.zrangebyscore("count", 0, rCount)
-
-    let cacheResult
-    let cresult
-    let result
-    console.log(rCount)
-    console.log(minCount)
-
-    //case all update need is in cache
-    if (minCount <= rCount + 1) {
-        cacheResult = await rc.zrangebyscore("data", rCount + 1, count)
-        cresult = []
-        cacheResult.forEach((string) => cresult.push(JSON.parse(string)))
-        cacheResult = undefined 
-        res.status(201).json({
-            success: true,
-            data: result
-        })
-    } else { //case update from both cache and DB
-        cacheResult = await rc.zrangebyscore("data", minCount, minCount + 10)
-        console.log(cacheResult)
-        cresult = []
-        cacheResult.forEach((string) => cresult.push(JSON.parse(string)))
-        cacheResult = undefined
-
-
-        let conn
-            try {
-                let sql = "SELECT uuid, author, message, likes FROM data WHERE count >= " + (rCount+1) + " AND " + "count < " + (minCount) + " AND isdelete = 0 LIMIT 10"
-                console.log(sql)
-                conn = await pool.getConnection();
-
-                const result = await conn.query(sql)
-                cresult.forEach((item)=>result.push(item))
-                cresult = undefined
-
-                console.log("prepare to send res")
-                res.status(201).json({
-                    success: true,
-                    message: "successfully get all rows",
-                    valid: validId,
-                    data: result,
-                })
-
-            } catch (err) {
-                throw err;
-
-            } finally {
-                if (conn) conn.release();
-            }
     }
 });
 
@@ -153,43 +159,45 @@ app.put("/api/messages/:uuid", async (req,res) => {
         //update count and data table in cache
         await rc.zadd("count", count + 1, req.params.uuid)
         await rc.zremrangebyscore("data", oscore, oscore)
-        await rc.zadd("data", count + 1, JSON.stringify(body)) 
-    } else {
-        res.status(404).json({
-            success: false,
-            message: "uuid not found in count cache",
-    })}
+        await rc.zadd("data", count + 1, JSON.stringify(body))
 
-    //DB part
-    try {
-        // let sql = "SELECT uuid FROM data WHERE uuid = ?"
-        // let values = [req.params.uuid]
-        conn = await pool.getConnection();
+        //DB part
+        try {
+            // let sql = "SELECT uuid FROM data WHERE uuid = ?"
+            // let values = [req.params.uuid]
+            conn = await pool.getConnection();
 
-        // let [rows, meta] = await conn.query(sql,values)
+            // let [rows, meta] = await conn.query(sql,values)
 
-        // if (!rows) {
-        //     res.status(404).json({
-        //         success: false,
-        //         message: "uuid not found in DB",
-        //     })
-        // } else {
+            // if (!rows) {
+            //     res.status(404).json({
+            //         success: false,
+            //         message: "uuid not found in DB",
+            //     })
+            // } else {
             sql = "UPDATE data SET author = ?, message = ?, likes = ? , count = ? WHERE uuid = ?"
             values = [req.body.author, req.body.message, req.body.likes, count + 1, req.params.uuid]
             let result = await conn.query(sql,values)
             res.status(201).json({
                 success: true,
                 message: "successfully update",
+
                 //data: result
             })
         // }
 
-    } catch (err) {
-        throw err;
+        } catch (err) {
+            throw err;
 
-    } finally {
-        if (conn) conn.release();
-    }
+        } finally {
+            if (conn) conn.release();
+        }
+
+    } else {
+        res.status(404).json({
+            success: false,
+            message: "uuid not found in count cache",
+    })}
 });
 
 //delete version
@@ -302,7 +310,7 @@ app.post("/api/messages", async (req, res) => {
 
     } else {
         res.status(409).json({
-            
+            success: false,
             message: "uuid already exist in cache",
     })}
 
