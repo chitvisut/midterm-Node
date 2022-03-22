@@ -8,7 +8,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}))
 
 const rc = new Redis()
-const maxCache = 5
+const maxCache = 200000
 
 const pool = mariadb.createPool({
     host: "34.217.133.174", 
@@ -258,7 +258,7 @@ app.post("/api/messages", async (req, res) => {
 
     if (!oscore) {
         let cacheSize = await rc.zcount("data", "-inf", "+inf")
-        if (cacheSize <= maxCache) {
+        if (cacheSize < maxCache) {
             //update count and data table in cache
             await rc.zadd("count", count + 1, body.uuid)
             await rc.zadd("data", count + 1, JSON.stringify(body)) 
