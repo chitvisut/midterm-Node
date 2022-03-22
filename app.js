@@ -274,7 +274,7 @@ app.post("/api/messages", async (req, res) => {
         try {
             // let sql = "SELECT uuid FROM data WHERE uuid = ?"
             // let values = [body.uuid]
-            // conn = await pool.getConnection();
+            conn = await pool.getConnection();
             // let [rows, meta] = await conn.query(sql,values)
     
             // if (rows) {
@@ -285,7 +285,6 @@ app.post("/api/messages", async (req, res) => {
             // } else {
                 sql = "INSERT INTO data (uuid, author, message, likes, count) VALUES (?,?,?,?,?)"
                 values = [body.uuid, body.author, body.message, body.likes, count + 1]
-                conn = await pool.getConnection();
                 const result = await conn.query(sql,values)
                 //console.log(result)
                 res.status(201).json({
