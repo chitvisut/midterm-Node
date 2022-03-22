@@ -8,7 +8,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}))
 
 const rc = new Redis()
-const maxCache = 4
+const maxCache = 200000
 
 const pool = mariadb.createPool({
     host: "34.217.133.174", 
@@ -163,28 +163,15 @@ app.put("/api/messages/:uuid", async (req,res) => {
 
         //DB part
         try {
-            // let sql = "SELECT uuid FROM data WHERE uuid = ?"
-            // let values = [req.params.uuid]
             conn = await pool.getConnection();
-
-            // let [rows, meta] = await conn.query(sql,values)
-
-            // if (!rows) {
-            //     res.status(404).json({
-            //         success: false,
-            //         message: "uuid not found in DB",
-            //     })
-            // } else {
             sql = "UPDATE data SET author = ?, message = ?, likes = ? , count = ? WHERE uuid = ?"
             values = [req.body.author, req.body.message, req.body.likes, count + 1, req.params.uuid]
             let result = await conn.query(sql,values)
             res.status(201).json({
                 success: true,
                 message: "successfully update",
-
-                //data: result
             })
-        // }
+    
 
         } catch (err) {
             throw err;
@@ -262,7 +249,7 @@ app.post("/api/messages", async (req, res) => {
     //find score of uuid
     let oscore = await rc.zscore("count", body.uuid)
     console.log("oscore " + oscore)
-    //let cache = await rc.zrangebyscore("data", oscore, oscore)
+
 
     if (!oscore) {
         let cacheSize = await rc.zcount("data", "-inf", "+inf")
@@ -280,26 +267,15 @@ app.post("/api/messages", async (req, res) => {
         }
 
         try {
-            // let sql = "SELECT uuid FROM data WHERE uuid = ?"
-            // let values = [body.uuid]
+
             conn = await pool.getConnection();
-            // let [rows, meta] = await conn.query(sql,values)
-    
-            // if (rows) {
-            //     res.status(409).json({
-            //         success: false,
-            //         message: "uuid already exist in DB",
-            //     })
-            // } else {
-                sql = "INSERT INTO data (uuid, author, message, likes, count) VALUES (?,?,?,?,?)"
-                values = [body.uuid, body.author, body.message, body.likes, count + 1]
-                const result = await conn.query(sql,values)
-                //console.log(result)
-                res.status(201).json({
-                    success: true,
-                    message: "successfully insert row"
-                })
-            // }
+            sql = "INSERT INTO data (uuid, author, message, likes, count) VALUES (?,?,?,?,?)"
+            values = [body.uuid, body.author, body.message, body.likes, count + 1]
+            const result = await conn.query(sql,values)
+            res.status(201).json({
+                success: true,
+                message: "successfully insert row"
+            })
     
         } catch (err) {
             throw err;
